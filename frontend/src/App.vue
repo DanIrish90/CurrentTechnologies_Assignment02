@@ -1,16 +1,15 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 const running = ref(false)
 const elapsed = ref(0)
+const history = ref([])
 
 let startTime = 0
 let interval = null
 
 function startTimer() {
-  if (running.value) {
-    return
-  }
+  if (running.value) return
 
   running.value = true
   startTime = Date.now() - elapsed.value
@@ -20,19 +19,44 @@ function startTimer() {
   }, 10)
 }
 
-function stopTimer() {
-  if (!running.value) {
-    return
-  }
+async function stopTimer() {
+  if (!running.value) return
 
   running.value = false
   clearInterval(interval)
+
+  await fetch('/api/times', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      durationMs: elapsed.value,
+    }),
+  })
+
+  elapsed.value = 0
+
+  await loadHistory()
 }
 
 function resetTimer() {
   running.value = false
   clearInterval(interval)
   elapsed.value = 0
+}
+
+async function loadHistory() {
+  const response = await fetch('/api/times')
+  history.value = await response.json()
+}
+
+async function clearHistory() {
+  await fetch('/api/times', {
+    method: 'DELETE',
+  })
+
+  await loadHistory()
 }
 
 function formatTime(milliseconds) {
@@ -48,6 +72,8 @@ function formatTime(milliseconds) {
     String(millis).padStart(3, '0')
   )
 }
+
+onMounted(loadHistory)
 </script>
 
 <template>
@@ -81,7 +107,27 @@ function formatTime(milliseconds) {
     <section class="history">
       <h2>Verlauf</h2>
 
-      <p>Noch keine Zeiten vorhanden.</p>
+      <button
+        v-if="history.length > 0"
+        @click="clearHistory"
+      >
+        Verlauf löschen
+      </button>
+
+      <p v-if="history.length === 0">
+        Noch keine Zeiten vorhanden.
+      </p>
+
+      <ul v-else>
+        <li
+          v-for="entry in history"
+          :key="entry.id"
+        >
+          {{ formatTime(entry.durationMs) }}
+          -
+          {{ new Date(entry.createdAt).toLocaleString() }}
+        </li>
+      </ul>
     </section>
   </main>
 </template>
@@ -120,5 +166,16 @@ button:disabled {
 
 .history {
   margin-top: 50px;
+}
+
+.history ul {
+  list-style: none;
+  padding: 0;
+  margin-top: 20px;
+}
+
+.history li {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
 }
 </style>
